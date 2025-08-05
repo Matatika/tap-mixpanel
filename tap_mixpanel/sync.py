@@ -15,11 +15,15 @@ from tap_mixpanel.client import MixpanelError, Server5xxError
 LOGGER = singer.get_logger()
 
 
-def write_schema(catalog, stream_name):
-    stream = catalog.get_stream(stream_name)
-    schema = stream.schema.to_dict()
+def write_schema(catalog: singer.Catalog, stream_name):
+    stream: singer.CatalogEntry = catalog.get_stream(stream_name)
+    schema: singer.Schema = stream.schema
+
+    mdata = metadata.to_map(stream.metadata)
+    schema.properties = _get_selected_properties(mdata, schema.properties)
+
     try:
-        singer.write_schema(stream_name, schema, stream.key_properties)
+        singer.write_schema(stream_name, schema.to_dict(), stream.key_properties)
     except OSError as err:
         LOGGER.error('OS Error writing schema for: {}'.format(stream_name))
         raise err
@@ -550,3 +554,32 @@ def sync(client, config, catalog, state, start_date):
         LOGGER.info('FINISHED Syncing: {}, Total endpoint records: {}'.format(
             stream_name,
             endpoint_total))
+
+def _get_selected_properties(
+    mdata,
+    properties: dict,
+    breadcrumb: tuple = ("properties",),
+):
+    selected_properties = {}
+
+    for name, schema in properties.items():
+        if "object" in schema.type:
+            selected_properties.update(
+                _get_selected_properties(
+                    mdata,
+                    schema["properties"],
+                    (*breadcrumb, name),
+                )
+            )
+            continue
+
+        inclusion = metadata.get(mdata, (*breadcrumb, name), "inclusion")
+        selected = metadata.get(mdata, (*breadcrumb, name), "selected")
+
+        if selected is None:
+            selected = metadata.get(mdata, (*breadcrumb, name), "selected-by-default")
+
+        if inclusion == "automatic" or (inclusion == "available" and selected):
+            selected_properties[name] = schema
+
+    return selected_properties
