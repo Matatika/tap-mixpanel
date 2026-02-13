@@ -203,7 +203,7 @@ def sync_endpoint(client, #pylint: disable=too-many-branches
     endpoint_total = 0 # Total for ALL: parents, date windows, and pages
 
     # Begin date windowing loop
-    while start_window < now_datetime:
+    while start_window <= now_datetime:
         # Initialize counters
         date_total = 0 # Total records for a date window
         parent_total = 0 # Total records for parent ID
